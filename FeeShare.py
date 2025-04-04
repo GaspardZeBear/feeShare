@@ -22,7 +22,8 @@ def findMinDueKey(account) :
   return(minKey)
 
 #--------------------------------------------
-def show(account) :
+def show(tag,account) :
+  print(f'--- {tag}')
   for a in sorted(account.keys()) :
     print((
           f'name={a}'
@@ -31,6 +32,7 @@ def show(account) :
           f' received={account[a]["received"]:8.2f}'
           f' gave={account[a]["given"]:8.2f}' 
           f' due={account[a]["due"]:8.2f}'
+          f' debt={account[a]["debt"]:8.2f}'
           ))
 
 #--------------------------------------------
@@ -55,6 +57,38 @@ def trans(num, minKey,maxKey,account) :
   account[maxKey]["account"] -= give
 
 #--------------------------------------------
+def explode(expenses,account,people) :
+
+  #-- explode the money spent between those who paid
+  total=0
+  for e in expenses :
+    names=e["name"].split(",")
+    for n in names :
+      account[n]["spent"] -= e["amount"]/len(names)
+      account[n]["account"] -= e["amount"]/len(names)
+    total += e["amount"]
+
+  #-- explode the money spent between those who where destination 
+  for e in expenses :
+    dest=people 
+    if "exc" in e and len(e["exc"]) > 0 :
+      part=e["amount"]/(len(e["exc"])+1)
+      for p in e["exc"] :
+        dest.remove(p)
+    elif "inc" in e and len(e["inc"]) > 0 :
+      dest.clear()
+      part=e["amount"]/(len(e["inc"]))
+      for p in e["inc"] :
+        dest.add(p)
+    else :
+      part=e["amount"]/len(people)
+    print(f'--- {e=} {dest=} {part=}')
+    for d in dest :
+      account[d]["debt"] -= part
+      print(f'{d=} {account[d]}')
+  return(total)
+
+#--------------------------------------------
 with open(sys.argv[1]) as fIn :
   expenses=json.load(fIn)
 
@@ -62,34 +96,36 @@ people=set()
 for e in expenses :
   names=e["name"].split(",")
   for n in names :
-    #people.add(e["name"])
     people.add(n)
-
-account={}
-for p in people :
-  account[p]={"account":0,"spent":0,"due":0,"received":0,"given":0}
-
-total=0
-for e in expenses :
-  names=e["name"].split(",")
-  for n in names :
-    #account[e["name"]]["spent"] -= e["amount"]
-    #account[e["name"]]["account"] -= e["amount"]
-    account[n]["spent"] -= e["amount"]/len(names)
-    account[n]["account"] -= e["amount"]/len(names)
-  total += e["amount"]
 
 if len(people) <= 0 :
   print("No people found")
   sys.exit()
 
+account={}
+
+#-------------------------------------------------------------
+# people :
+# - account : money on the account
+# - debt : how many does he give 
+# - spent : how many did he spend
+# - due : how many does he really give (spent - debt)
+# - received : after repartition
+# - given : after repartition
+
+for p in people :
+  account[p]={"account":0,"debt":0,"spent":0,"due":0,"received":0,"given":0}
+
+total=explode(expenses,account,people)
+
 each=total/len(people)
 print(f'{total=} expenses lines {len(expenses)} people={len(people)} {each=:.2f}')
-
 for a in account.keys() :
-  account[a]["due"]=each + account[a]["spent"]
+  #account[a]["due"]=each + account[a]["spent"]
+  account[a]["due"]= account[a]["spent"]-account[a]["debt"]
+  print(f'{a=} {account[a]}')
 
-show(account)
+show('Init',account)
 i=1
 while True :
   maxKey=findMaxDueKey(account)
@@ -98,5 +134,5 @@ while True :
     break
   trans(i,minKey,maxKey,account)
   i += 1
-show(account)
+show('Final',account)
 
